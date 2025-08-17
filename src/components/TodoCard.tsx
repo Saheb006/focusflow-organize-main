@@ -60,6 +60,10 @@ export const TodoCard = ({
   const [newSubTodoTitle, setNewSubTodoTitle] = useState('');
   const [newSubTodoDueDate, setNewSubTodoDueDate] = useState('');
   const [newSubTodoDueTime, setNewSubTodoDueTime] = useState('');
+  const [editingSubTodoId, setEditingSubTodoId] = useState<string | null>(null);
+  const [editSubTodoTitle, setEditSubTodoTitle] = useState('');
+  const [editSubTodoDueDate, setEditSubTodoDueDate] = useState('');
+  const [editSubTodoDueTime, setEditSubTodoDueTime] = useState('');
 
   const getProgress = () => {
     if (todo.subTodos.length === 0) return 0;
@@ -111,6 +115,35 @@ export const TodoCard = ({
     setNewSubTodoTitle('');
     setNewSubTodoDueDate('');
     setNewSubTodoDueTime('');
+  };
+
+  const handleEditSubTodo = (subTodo: SubTodo) => {
+    setEditingSubTodoId(subTodo.id);
+    setEditSubTodoTitle(subTodo.title);
+    setEditSubTodoDueDate(subTodo.dueDate ? format(subTodo.dueDate, 'yyyy-MM-dd') : '');
+    setEditSubTodoDueTime(subTodo.dueTime || '');
+  };
+
+  const handleSaveSubTodoEdit = () => {
+    if (editSubTodoTitle.trim() && editingSubTodoId) {
+      const dueDate = editSubTodoDueDate ? new Date(editSubTodoDueDate) : undefined;
+      onSubTodoUpdate(todo.id, editingSubTodoId, {
+        title: editSubTodoTitle.trim(),
+        dueDate,
+        dueTime: editSubTodoDueTime || undefined
+      });
+      setEditingSubTodoId(null);
+      setEditSubTodoTitle('');
+      setEditSubTodoDueDate('');
+      setEditSubTodoDueTime('');
+    }
+  };
+
+  const handleCancelSubTodoEdit = () => {
+    setEditingSubTodoId(null);
+    setEditSubTodoTitle('');
+    setEditSubTodoDueDate('');
+    setEditSubTodoDueTime('');
   };
 
   const isSubTodoOverdue = (subTodo: SubTodo) => {
@@ -254,39 +287,88 @@ export const TodoCard = ({
                 className="h-4 w-4 mt-1"
               />
               <div className="flex-1">
-                <span className={`text-sm ${
-                  subTodo.completed ? 'line-through text-muted-foreground' : ''
-                }`}>
-                  {subTodo.title}
-                </span>
-                {/* Sub-todo due date and time */}
-                {(subTodo.dueDate || subTodo.dueTime) && (
-                  <div className="flex items-center space-x-2 text-xs text-muted-foreground mt-1">
-                    {subTodo.dueDate && (
-                      <div className={`flex items-center space-x-1 ${
-                        isSubTodoOverdue(subTodo) ? 'text-red-500 font-medium' : ''
-                      }`}>
-                        <Calendar className="h-2 w-2" />
-                        <span>{formatDate(subTodo.dueDate)}</span>
-                      </div>
-                    )}
-                    {subTodo.dueTime && (
-                      <div className="flex items-center space-x-1">
-                        <Clock className="h-2 w-2" />
-                        <span>{subTodo.dueTime}</span>
-                      </div>
-                    )}
+                {editingSubTodoId === subTodo.id ? (
+                  <div className="space-y-2">
+                    <Input
+                      value={editSubTodoTitle}
+                      onChange={(e) => setEditSubTodoTitle(e.target.value)}
+                      className="text-sm"
+                      placeholder="Subtask title"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        type="date"
+                        value={editSubTodoDueDate}
+                        onChange={(e) => setEditSubTodoDueDate(e.target.value)}
+                        className="h-6 text-xs"
+                      />
+                      <Input
+                        type="time"
+                        value={editSubTodoDueTime}
+                        onChange={(e) => setEditSubTodoDueTime(e.target.value)}
+                        className="h-6 text-xs"
+                      />
+                    </div>
+                    <div className="flex space-x-2">
+                      <Button size="sm" onClick={handleSaveSubTodoEdit}>
+                        <Check className="h-3 w-3 mr-1" />
+                        Save
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={handleCancelSubTodoEdit}>
+                        <X className="h-3 w-3 mr-1" />
+                        Cancel
+                      </Button>
+                    </div>
                   </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className={`text-sm ${
+                        subTodo.completed ? 'line-through text-muted-foreground' : ''
+                      }`}>
+                        {subTodo.title}
+                      </span>
+                      <div className="flex space-x-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-muted-foreground hover:text-blue-500"
+                          onClick={() => handleEditSubTodo(subTodo)}
+                        >
+                          <Edit3 className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-muted-foreground hover:text-red-500"
+                          onClick={() => onSubTodoDelete(todo.id, subTodo.id)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    {/* Sub-todo due date and time */}
+                    {(subTodo.dueDate || subTodo.dueTime) && (
+                      <div className="flex items-center space-x-2 text-xs text-muted-foreground mt-1">
+                        {subTodo.dueDate && (
+                          <div className={`flex items-center space-x-1 ${
+                            isSubTodoOverdue(subTodo) ? 'text-red-500 font-medium' : ''
+                          }`}>
+                            <Calendar className="h-2 w-2" />
+                            <span>{formatDate(subTodo.dueDate)}</span>
+                          </div>
+                        )}
+                        {subTodo.dueTime && (
+                          <div className="flex items-center space-x-1">
+                            <Clock className="h-2 w-2" />
+                            <span>{subTodo.dueTime}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 w-6 p-0 text-muted-foreground hover:text-red-500"
-                onClick={() => onSubTodoDelete(todo.id, subTodo.id)}
-              >
-                <X className="h-3 w-3" />
-              </Button>
             </div>
           ))}
         </div>

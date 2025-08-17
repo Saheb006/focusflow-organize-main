@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Todo, Priority } from '@/types/todo';
+import { Todo, Priority, SubTodo } from '@/types/todo';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,13 @@ interface AddTodoDialogProps {
   onAddTodo: (todo: Omit<Todo, 'id' | 'createdAt'>) => void;
 }
 
+interface SubTodoInput {
+  id: string;
+  title: string;
+  dueDate?: Date;
+  dueTime: string;
+}
+
 const priorities: { value: Priority; label: string; color: string }[] = [
   { value: 'low', label: 'Low Priority', color: 'bg-green-500' },
   { value: 'medium', label: 'Medium Priority', color: 'bg-yellow-500' },
@@ -45,7 +52,9 @@ export const AddTodoDialog = ({ open, onOpenChange, onAddTodo }: AddTodoDialogPr
   const [color, setColor] = useState<string>('');
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
-  const [subTodos, setSubTodos] = useState<string[]>(['']);
+  const [subTodos, setSubTodos] = useState<SubTodoInput[]>([
+    { id: 'temp-0', title: '', dueDate: undefined, dueTime: '' }
+  ]);
 
   const handleSubmit = () => {
     if (!title.trim()) return;
@@ -59,11 +68,13 @@ export const AddTodoDialog = ({ open, onOpenChange, onAddTodo }: AddTodoDialogPr
       dueDate,
       dueTime: dueTime || undefined,
       subTodos: subTodos
-        .filter(sub => sub.trim())
+        .filter(sub => sub.title.trim())
         .map((sub, index) => ({
           id: `temp-${index}`,
-          title: sub.trim(),
+          title: sub.title.trim(),
           completed: false,
+          dueDate: sub.dueDate,
+          dueTime: sub.dueTime || undefined,
           createdAt: new Date()
         })),
       tags,
@@ -84,7 +95,7 @@ export const AddTodoDialog = ({ open, onOpenChange, onAddTodo }: AddTodoDialogPr
     setColor('');
     setTags([]);
     setNewTag('');
-    setSubTodos(['']);
+    setSubTodos([{ id: 'temp-0', title: '', dueDate: undefined, dueTime: '' }]);
   };
 
   const addTag = () => {
@@ -98,14 +109,15 @@ export const AddTodoDialog = ({ open, onOpenChange, onAddTodo }: AddTodoDialogPr
     setTags(tags.filter(tag => tag !== tagToRemove));
   };
 
-  const updateSubTodo = (index: number, value: string) => {
+  const updateSubTodo = (index: number, field: keyof SubTodoInput, value: any) => {
     const updated = [...subTodos];
-    updated[index] = value;
+    updated[index] = { ...updated[index], [field]: value };
     setSubTodos(updated);
   };
 
   const addSubTodo = () => {
-    setSubTodos([...subTodos, '']);
+    const newId = `temp-${subTodos.length}`;
+    setSubTodos([...subTodos, { id: newId, title: '', dueDate: undefined, dueTime: '' }]);
   };
 
   const removeSubTodo = (index: number) => {
@@ -263,25 +275,71 @@ export const AddTodoDialog = ({ open, onOpenChange, onAddTodo }: AddTodoDialogPr
           {/* Sub-todos */}
           <div className="space-y-2">
             <Label>Subtasks</Label>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {subTodos.map((subTodo, index) => (
-                <div key={index} className="flex space-x-2">
-                  <Input
-                    placeholder={`Subtask ${index + 1}...`}
-                    value={subTodo}
-                    onChange={(e) => updateSubTodo(index, e.target.value)}
-                    className="flex-1"
-                  />
-                  {subTodos.length > 1 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeSubTodo(index)}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  )}
+                <div key={subTodo.id} className="space-y-2 p-3 border rounded-lg">
+                  <div className="flex space-x-2">
+                    <Input
+                      placeholder={`Subtask ${index + 1}...`}
+                      value={subTodo.title}
+                      onChange={(e) => updateSubTodo(index, 'title', e.target.value)}
+                      className="flex-1"
+                    />
+                    {subTodos.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeSubTodo(index)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                  
+                  {/* Sub-todo due date and time */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Due Date</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className={cn(
+                              "w-full justify-start text-left font-normal text-xs",
+                              !subTodo.dueDate && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-1 h-3 w-3" />
+                            {subTodo.dueDate ? format(subTodo.dueDate, "MMM dd") : "Pick date"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={subTodo.dueDate}
+                            onSelect={(date) => updateSubTodo(index, 'dueDate', date)}
+                            initialFocus
+                            className="pointer-events-auto"
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <Label className="text-xs">Due Time</Label>
+                      <div className="relative">
+                        <Clock className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                        <Input
+                          type="time"
+                          value={subTodo.dueTime}
+                          onChange={(e) => updateSubTodo(index, 'dueTime', e.target.value)}
+                          className="pl-7 h-8 text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ))}
               <Button
