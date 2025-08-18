@@ -48,8 +48,8 @@ export const todoService = {
     try {
       await ensureTablesExist()
 
-      const { data: todosData, error: todosError } = await retryOperation(() =>
-        supabase
+      const { data: todosData, error: todosError } = await retryOperation<any>(async () =>
+        await supabase
           .from('todos')
           .select('*')
           .eq('user_id', userId)
@@ -64,8 +64,8 @@ export const todoService = {
         return []
       }
 
-      const { data: subTodosData, error: subTodosError } = await retryOperation(() =>
-        supabase
+      const { data: subTodosData, error: subTodosError } = await retryOperation<any>(async () =>
+        await supabase
           .from('sub_todos')
           .select('*')
           .in('todo_id', todosData.map(todo => todo.id))
@@ -119,8 +119,8 @@ export const todoService = {
         throw new Error('User ID is required')
       }
 
-      const { data, error } = await retryOperation(() =>
-        supabase
+      const { data, error } = await retryOperation<any>(async () =>
+        await supabase
           .from('todos')
           .insert({
             user_id: userId,
@@ -205,8 +205,8 @@ export const todoService = {
         updateData.completed_at = updates.completedAt?.toISOString() || null
       }
 
-      const { error } = await retryOperation(() =>
-        supabase
+      const { error } = await retryOperation<any>(async () =>
+        await supabase
           .from('todos')
           .update(updateData)
           .eq('id', todoId)
@@ -231,8 +231,8 @@ export const todoService = {
       }
 
       // Delete sub-todos first (cascade should handle this, but we'll be explicit)
-      const { error: subTodosError } = await retryOperation(() =>
-        supabase
+      const { error: subTodosError } = await retryOperation<any>(async () =>
+        await supabase
           .from('sub_todos')
           .delete()
           .eq('todo_id', todoId)
@@ -244,8 +244,8 @@ export const todoService = {
       }
 
       // Delete the todo
-      const { error } = await retryOperation(() =>
-        supabase
+      const { error } = await retryOperation<any>(async () =>
+        await supabase
           .from('todos')
           .delete()
           .eq('id', todoId)
@@ -273,8 +273,8 @@ export const todoService = {
         throw new Error('Sub-todo title is required')
       }
 
-      const { data, error } = await retryOperation(() =>
-        supabase
+      const { data, error } = await retryOperation<any>(async () =>
+        await supabase
           .from('sub_todos')
           .insert({
             todo_id: todoId,
@@ -334,8 +334,8 @@ export const todoService = {
         updateData.due_time = updates.dueTime
       }
 
-      const { error } = await retryOperation(() =>
-        supabase
+      const { error } = await retryOperation<any>(async () =>
+        await supabase
           .from('sub_todos')
           .update(updateData)
           .eq('id', subTodoId)
@@ -359,8 +359,8 @@ export const todoService = {
         throw new Error('Sub-todo ID is required')
       }
 
-      const { error } = await retryOperation(() =>
-        supabase
+      const { error } = await retryOperation<any>(async () =>
+        await supabase
           .from('sub_todos')
           .delete()
           .eq('id', subTodoId)

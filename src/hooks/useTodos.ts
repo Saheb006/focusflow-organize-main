@@ -23,24 +23,38 @@ export const useTodos = () => {
     },
     enabled: !!user?.id,
     retry: (failureCount, error) => {
-      // Don't retry if it's an authentication error
-      if (error?.message?.includes('not authenticated')) {
+      if ((error as any)?.message?.includes('not authenticated')) {
         return false
       }
-      // Retry up to 3 times for other errors
       return failureCount < 3
     },
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-    staleTime: 1000 * 60 * 5, // 5 minutes
-    gcTime: 1000 * 60 * 10, // 10 minutes
+    staleTime: 1000 * 60 * 5,
+    gcTime: 1000 * 60 * 10,
   })
 
   const createTodoMutation = useMutation({
-    mutationFn: async (todo: Omit<Todo, 'id' | 'createdAt' | 'subTodos'>) => {
+    mutationFn: async (todo: Omit<Todo, 'id' | 'createdAt'>) => {
       if (!user?.id) {
         throw new Error('User not authenticated')
       }
-      return todoService.createTodo(user.id, todo)
+      const { subTodos: initialSubTodos = [], ...todoWithoutSubs } = (todo as any)
+      const created = await todoService.createTodo(user.id, todoWithoutSubs)
+      if (Array.isArray(initialSubTodos) && initialSubTodos.length > 0) {
+        await Promise.all(
+          initialSubTodos
+            .filter((s: any) => s?.title && String(s.title).trim().length > 0)
+            .map((s: any) =>
+              todoService.createSubTodo(created.id, {
+                title: String(s.title).trim(),
+                dueDate: s.dueDate,
+                dueTime: s.dueTime || undefined,
+                completed: false,
+              } as Omit<SubTodo, 'id' | 'createdAt'>)
+            )
+        )
+      }
+      return created
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['todos', user?.id] })
@@ -121,7 +135,6 @@ export const useTodos = () => {
     },
   })
 
-  // Health check mutation
   const healthCheckMutation = useMutation({
     mutationFn: async () => {
       return todoService.healthCheck()
@@ -150,3 +163,5 @@ export const useTodos = () => {
     isHealthy: healthCheckMutation.data,
   }
 }
+
+

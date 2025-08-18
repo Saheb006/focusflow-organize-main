@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Todo } from '@/types/todo';
 import { Calendar } from '@/components/ui/calendar';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { format, isSameDay, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
+import { format, isSameDay, isAfter, isBefore, startOfDay, compareAsc } from 'date-fns';
 import { CalendarDays, Clock } from 'lucide-react';
 
 interface CalendarPanelProps {
@@ -19,37 +19,78 @@ export const CalendarPanel = ({ todos }: CalendarPanelProps) => {
     );
   };
 
-  const getDateWithTodos = () => {
-    const currentMonth = new Date();
-    const monthStart = startOfMonth(currentMonth);
-    const monthEnd = endOfMonth(currentMonth);
-    const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
-
-    return daysInMonth.filter(day => getTodosForDate(day).length > 0);
+  // Collect both todos and sub-todos occurring on a given date
+  const getItemsForDate = (date: Date) => {
+    const items: { id: string; title: string; priority: Todo['priority']; dueTime?: string; type: 'todo' | 'sub' }[] = [];
+    for (const todo of todos) {
+      if (todo.dueDate && isSameDay(todo.dueDate, date)) {
+        items.push({ id: `todo-${todo.id}`, title: todo.title, priority: todo.priority, dueTime: todo.dueTime, type: 'todo' });
+      }
+      for (const sub of todo.subTodos) {
+        if (sub.dueDate && isSameDay(sub.dueDate, date)) {
+          items.push({ id: `sub-${sub.id}`, title: sub.title, priority: todo.priority, dueTime: sub.dueTime, type: 'sub' });
+        }
+      }
+    }
+    return items;
   };
 
   const selectedDateTodos = getTodosForDate(selectedDate);
-  const datesWithTodos = getDateWithTodos();
+  const selectedDateSubTodos = useMemo(() => {
+    return todos.flatMap(todo => (
+      todo.subTodos
+        .filter(sub => sub.dueDate && isSameDay(sub.dueDate, selectedDate))
+        .map(sub => ({ ...sub, parentPriority: todo.priority }))
+    ));
+  }, [todos, selectedDate]);
+  // On first load, default to closest upcoming date with tasks (including today)
+  const hasInitialized = useRef(false);
+  useEffect(() => {
+    if (hasInitialized.current) return;
+    const today = startOfDay(new Date());
+    const futureDates: Date[] = [];
+    const todayDates: Date[] = [];
+    for (const todo of todos) {
+      if (todo.dueDate) {
+        const d = startOfDay(todo.dueDate);
+        if (isAfter(d, today)) futureDates.push(d);
+        else if (isSameDay(d, today)) todayDates.push(d);
+      }
+      for (const sub of todo.subTodos) {
+        if (sub.dueDate) {
+          const d = startOfDay(sub.dueDate);
+          if (isAfter(d, today)) futureDates.push(d);
+          else if (isSameDay(d, today)) todayDates.push(d);
+        }
+      }
+    }
+    if (futureDates.length > 0 || todayDates.length > 0) {
+      const pool = futureDates.length > 0 ? futureDates : todayDates;
+      pool.sort((a, b) => compareAsc(a, b));
+      setSelectedDate(pool[0]);
+      hasInitialized.current = true;
+    }
+  }, [todos]);
 
   const getDayContent = (day: Date) => {
-    const todosForDay = getTodosForDate(day);
-    if (todosForDay.length === 0) return null;
+    const itemsForDay = getItemsForDate(day);
+    if (itemsForDay.length === 0) return null;
 
     return (
       <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2">
         <div className="flex space-x-1">
-          {todosForDay.slice(0, 3).map((todo, index) => (
+          {itemsForDay.slice(0, 3).map((item) => (
             <div
-              key={todo.id}
+              key={item.id}
               className="w-1.5 h-1.5 rounded-full"
               style={{ 
-                backgroundColor: todo.priority === 'urgent' ? '#ef4444' :
-                                todo.priority === 'high' ? '#f59e0b' :
-                                todo.priority === 'medium' ? '#eab308' : '#10b981'
+                backgroundColor: item.priority === 'urgent' ? '#ef4444' :
+                                item.priority === 'high' ? '#f59e0b' :
+                                item.priority === 'medium' ? '#eab308' : '#10b981'
               }}
             />
           ))}
-          {todosForDay.length > 3 && (
+          {itemsForDay.length > 3 && (
             <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground" />
           )}
         </div>
@@ -72,103 +113,80 @@ export const CalendarPanel = ({ todos }: CalendarPanelProps) => {
           onSelect={(date) => date && setSelectedDate(date)}
           className="rounded-md border-0 p-0"
           components={{
-            Day: ({ date, ...props }) => (
-              <div className="relative">
-                <button {...props} className={`
-                  w-full h-full p-2 text-sm rounded-md hover:bg-muted
-                  ${isSameDay(date, selectedDate) ? 'bg-primary text-primary-foreground' : ''}
-                  ${isSameDay(date, new Date()) ? 'font-bold' : ''}
-                `}>
-                  {format(date, 'd')}
-                  {getDayContent(date)}
-                </button>
-              </div>
-            )
+            Day: ({ date, ...props }) => {
+              const today = startOfDay(new Date());
+              const dayStart = startOfDay(date);
+              const isPast = isBefore(dayStart, today);
+              const isToday = isSameDay(date, today);
+              const isSelected = isSameDay(date, selectedDate);
+              const base = 'w-full h-full p-2 text-sm rounded-md';
+              const tone = isSelected
+                ? 'font-semibold'
+                : isToday
+                  ? 'text-foreground'
+                  : isPast
+                    ? 'text-muted-foreground'
+                    : 'text-foreground/80';
+              return (
+                <div className="relative">
+                  <button {...props} className={`${base} ${tone}`}>
+                    {format(date, 'd')}
+                    {getDayContent(date)}
+                  </button>
+                </div>
+              );
+            }
           }}
         />
       </div>
 
-      {/* Selected Date Todos */}
+      {/* Reminder Section - shows selected day items */}
       <div className="flex-1 p-6 custom-scrollbar overflow-y-auto">
-        <div className="mb-4">
-          <h3 className="font-medium mb-2">
-            {format(selectedDate, 'EEEE, MMMM d')}
-          </h3>
-          {selectedDateTodos.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No tasks scheduled for this day
-            </p>
+        <div className="border-t border-border pt-2">
+          <h3 className="font-medium mb-3 text-sm">Reminders · {format(selectedDate, 'MMM d')}</h3>
+          {selectedDateTodos.length === 0 && selectedDateSubTodos.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No tasks for this day</p>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {selectedDateTodos.map(todo => (
-                <Card key={todo.id} className="border-l-4" style={{
-                  borderLeftColor: todo.priority === 'urgent' ? '#ef4444' :
-                                  todo.priority === 'high' ? '#f59e0b' :
-                                  todo.priority === 'medium' ? '#eab308' : '#10b981'
-                }}>
-                  <CardContent className="p-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h4 className={`font-medium text-sm leading-tight ${
-                          todo.completed ? 'line-through text-muted-foreground' : ''
-                        }`}>
-                          {todo.title}
-                        </h4>
-                        {todo.dueTime && (
-                          <div className="flex items-center mt-1 text-xs text-muted-foreground">
-                            <Clock className="h-3 w-3 mr-1" />
-                            {todo.dueTime}
-                          </div>
-                        )}
-                        {todo.tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {todo.tags.map(tag => (
-                              <Badge key={tag} variant="secondary" className="text-xs h-4">
-                                {tag}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className={`
-                        w-2 h-2 rounded-full ml-2 mt-1
-                        ${todo.priority === 'urgent' ? 'bg-red-500' :
-                          todo.priority === 'high' ? 'bg-orange-500' :
-                          todo.priority === 'medium' ? 'bg-yellow-500' : 'bg-green-500'}
-                      `} />
+                <div key={todo.id} className="flex items-center justify-between text-sm cursor-pointer hover:bg-muted p-2 rounded-md">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${
+                      todo.priority === 'urgent' ? 'bg-red-500' :
+                      todo.priority === 'high' ? 'bg-orange-500' :
+                      todo.priority === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
+                    }`} />
+                    <span>{todo.title}</span>
+                  </div>
+                  {todo.dueTime && (
+                    <div className="flex items-center text-xs text-muted-foreground">
+                      <Clock className="h-3 w-3 mr-1" />
+                      {todo.dueTime}
                     </div>
-                  </CardContent>
-                </Card>
+                  )}
+                </div>
+              ))}
+              {selectedDateSubTodos.map(sub => (
+                <div key={sub.id} className="flex items-center justify-between text-sm cursor-pointer hover:bg-muted p-2 rounded-md">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${
+                      sub.parentPriority === 'urgent' ? 'bg-red-500' :
+                      sub.parentPriority === 'high' ? 'bg-orange-500' :
+                      sub.parentPriority === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
+                    }`} />
+                    <span>{sub.title}</span>
+                  </div>
+                  {sub.dueTime && (
+                    <div className="flex items-center text-xs text-muted-foreground">
+                      <Clock className="h-3 w-3 mr-1" />
+                      {sub.dueTime}
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           )}
         </div>
-
-        {/* Upcoming Tasks */}
-        {datesWithTodos.length > 0 && (
-          <div className="border-t border-border pt-4">
-            <h3 className="font-medium mb-3 text-sm">Upcoming Tasks</h3>
-            <div className="space-y-2">
-              {datesWithTodos.slice(0, 5).map(date => {
-                const todosForDate = getTodosForDate(date);
-                return (
-                  <div 
-                    key={date.toISOString()}
-                    className="flex items-center justify-between text-sm cursor-pointer hover:bg-muted p-2 rounded-md"
-                    onClick={() => setSelectedDate(date)}
-                  >
-                    <span className="text-muted-foreground">
-                      {format(date, 'MMM d')}
-                    </span>
-                    <Badge variant="secondary" className="h-5 text-xs">
-                      {todosForDate.length}
-                    </Badge>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
